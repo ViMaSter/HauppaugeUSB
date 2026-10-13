@@ -6,8 +6,10 @@
 
 using namespace TDA19977Data;
 
-ReceiverTDA19977::ReceiverTDA19977(FX2Device_t &device, unsigned clockDelay, bool clockToggle)
+ReceiverTDA19977::ReceiverTDA19977(FX2Device_t &device, unsigned clockDelay, bool clockToggle,
+                                                                 unsigned outputDelay, bool automaticClockDelay)
     : m_device(device), m_page(-1), m_transmitterPage(-1), m_clockDelay(clockDelay), m_clockToggle(clockToggle),
+            m_outputDelay(outputDelay), m_automaticClockDelay(automaticClockDelay),
             m_initialized(false), m_format(nullptr)
 {
 }
@@ -42,7 +44,7 @@ bool ReceiverTDA19977::write(uint16_t reg, uint8_t value)
 
 bool ReceiverTDA19977::init()
 {
-    if (m_clockDelay > 7)
+    if (m_clockDelay > 7 || m_outputDelay > 15)
         return false;
     uint8_t revision = 0;
     if (!read(0x0000, revision))
@@ -122,6 +124,24 @@ bool ReceiverTDA19977::setInput(receiverInput_t input)
         return false;
     if (!m_device.setPortStateBits(FX2_PORT_E, 0, 0x40))
         return false;
+    const uint8_t analogFormatRegister = 0xe5;
+    uint8_t analogFormat = 0;
+    if (!m_device.I2CWriteRead(0x9c, &analogFormatRegister, 1, &analogFormat, 1))
+        return false;
+    INFOLOG << "TDA9955 output control before HDMI: 0x" << std::hex
+            << static_cast<unsigned>(analogFormat) << std::dec;
+    if (!(analogFormat & 0x80))
+    {
+        const Register disable[] = {{0x00f1, 0x14},
+            {0x00e5, static_cast<uint8_t>(analogFormat | 0x80)},
+            {0x00f4, 0x1f}, {0x00f5, 7}};
+        for (const auto &operation : disable)
+        {
+            const uint8_t command[] = {static_cast<uint8_t>(operation.address), operation.value};
+            if (!m_device.I2CWrite(0x9c, command, sizeof(command)))
+                return false;
+        }
+    }
     for (const auto &operation : {std::pair<uint16_t, uint8_t>(0x0114, 0xbf),
                                   std::pair<uint16_t, uint8_t>(0x0115, 0xf0)})
     {
@@ -164,14 +184,17 @@ bool ReceiverTDA19977::configureOutput(const Format &format)
         return false;
     if (!configureTransmitter(format))
         return false;
+    const unsigned clockDelay = m_automaticClockDelay && format.id == 12 ? 1 : m_clockDelay;
     if (!update(0x0017, 0x80, 0x80) ||
-        !write(0x0016, static_cast<uint8_t>(m_clockDelay)) ||
-        !update(0x00e9, 0x80, m_clockToggle ? 0x80 : 0))
+        !write(0x0016, static_cast<uint8_t>(clockDelay)) ||
+        !update(0x00e9, 0x80, m_clockToggle ? 0x80 : 0) ||
+        !update(0x00eb, 0x0f, static_cast<uint8_t>(m_outputDelay)))
         return false;
     INFOLOG << "TDA19977 HDMI: " << format.width << "x" << format.height
             << (format.interlaced ? "i" : "p") << " " << format.rate / 100.0;
-    INFOLOG << "TDA19977 pixel-clock delay: " << m_clockDelay;
+    INFOLOG << "TDA19977 pixel-clock delay: " << clockDelay;
     INFOLOG << "TDA19977 pixel-clock toggle: " << m_clockToggle;
+    INFOLOG << "TDA19977 output-clock delay: " << m_outputDelay;
     return true;
 }
 
@@ -255,6 +278,11 @@ bool ReceiverTDA19977::hasInputSignal()
             horizontalPeriod < format.hMin || horizontalPeriod > format.hMax)
             continue;
         if (m_format != &format && !configureOutput(format))
+            return false;
+        uint8_t status = 0;
+        if (!write(0x000d, 0x0b) || !read(0x000f, status))
+            return false;
+        if ((status & 0x0c) && !write(0x000f, status))
             return false;
         m_format = &format;
         return true;

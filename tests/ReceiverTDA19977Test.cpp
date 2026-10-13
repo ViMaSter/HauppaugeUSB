@@ -8,6 +8,7 @@
 namespace {
 std::map<uint16_t, uint8_t> registers;
 std::map<uint16_t, uint8_t> transmitterRegisters;
+std::map<uint8_t, uint8_t> analogRegisters;
 std::map<uint8_t, uint8_t> ports;
 uint8_t page = 0;
 uint8_t transmitterPage = 0;
@@ -18,6 +19,7 @@ void reset()
 {
     registers.clear();
     transmitterRegisters.clear();
+    analogRegisters.clear();
     ports.clear();
     registers[0] = 0x41;
     page = 0;
@@ -45,6 +47,12 @@ bool FX2Device_t::I2CWrite(uint8_t address, const uint8_t *data, size_t length)
     if (failWrite) return false;
     if (address == 0x68) return length == 2;
     if (address == 0x88) return length == 3;
+    if (address == 0x9c)
+    {
+        assert(length == 2);
+        analogRegisters[data[0]] = data[1];
+        return true;
+    }
     if (address == 0xe0)
     {
         assert(length == 2);
@@ -66,6 +74,12 @@ bool FX2Device_t::I2CWriteRead(uint8_t address, const uint8_t *data, size_t leng
                              uint8_t *result, size_t resultLength)
 {
     assert(resultLength == 1);
+    if (address == 0x9c)
+    {
+        assert(length == 1);
+        *result = analogRegisters[data[0]];
+        return true;
+    }
     if (address == 0x68)
     {
         assert(length == 1);
@@ -115,10 +129,13 @@ int main()
                TDA19977Data::EDID[index]);
     assert(!receiver.setInput(RXI_COMP));
     assert(receiver.setInput(RXI_HDMI));
+    assert(analogRegisters[0xe5] == 0x80 && analogRegisters[0xf4] == 0x1f);
     assert(ports[FX2_PORT_C] & 0x10);
     assert(!receiver.hasInputSignal());
     timing(450450, 400);
+    registers[0x000f] = 0x0c;
     assert(receiver.hasInputSignal());
+    assert(registers[0x000d] == 0x0b && registers[0x000f] == 0x0c);
     receiverHDMIParams_t params{};
     assert(receiver.getHDMIParams(&params));
     assert(params.width == 1920 && params.height == 1080 && !params.interlaced);
@@ -128,6 +145,7 @@ int main()
     assert(receiver.setOutputBusMode(RXOBM_422_10x2));
     assert(registers[0x0017] == 0xaf);
     assert(registers[0x00e5] == 0x79);
+    assert(registers[0x00e9] == 0xa0);
     assert(!receiver.setOutputBusMode(RXOBM_656_10_DC));
     timing(540000, 480);
     assert(receiver.hasInputSignal() && receiver.getHDMIFormat() == 31);
@@ -154,6 +172,17 @@ int main()
     ReceiverTDA19977 alternateClock(device, 1, false);
     assert(alternateClock.init());
     assert(registers[0x0016] == 1 && registers[0x00e9] == 0x20);
+    ReceiverTDA19977 outputDelay(device, 1, true, 4);
+    assert(outputDelay.init());
+    assert(registers[0x00eb] == 0x14);
+    ReceiverTDA19977 invalidOutputDelay(device, 1, true, 16);
+    assert(!invalidOutputDelay.init());
+    ReceiverTDA19977 automaticDelay(device, 7, true, 8, true);
+    assert(automaticDelay.init());
+    assert(registers[0x0016] == 7);
+    timing(450450, 400);
+    assert(automaticDelay.hasInputSignal());
+    assert(registers[0x0016] == 1);
     reset();
     failWrite = true;
     ReceiverTDA19977 failedTransport(device);

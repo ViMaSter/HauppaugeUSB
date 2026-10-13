@@ -1566,6 +1566,11 @@ bool HauppaugeDev::init_hdmi(void)
     int vic =
         m_rxDev->getHDMIFormat();
 
+    if (m_fx2->usb.ProductID() == 0xe502 && vic == 16)
+    {
+        RegistryAccess::writeDword("VideoCapFrameRate", 8);
+        RegistryAccess::writeDword("VideoOutputFrameRate", 5);
+    }
 
     if (
         vic <= 0
@@ -1861,9 +1866,9 @@ bool HauppaugeDev::Open(
         return false;
     }
     const bool legacy = profile->receiver == ReceiverFamily::TDA19977;
-    if (legacy && m_params.rxClockDelay > 7)
+    if (legacy && (m_params.rxClockDelay > 7 || m_params.rxOutputDelay > 15))
     {
-        m_errmsg = "Receiver clock delay must be between 0 and 7.";
+        m_errmsg = "Receiver clock delay must be 0-7 and output delay must be 0-15.";
         CRITLOG << m_errmsg;
         return false;
     }
@@ -1937,7 +1942,15 @@ bool HauppaugeDev::Open(
 
     if (legacy)
     {
-        m_rxDev = new ReceiverTDA19977(*m_fx2, m_params.rxClockDelay, m_params.rxClockToggle);
+        if (!m_fx2->setPortStateBits(FX2_PORT_A, 0, 0x03) ||
+            !m_fx2->setPortDir(FX2_PORT_A, 0xfc))
+        {
+            m_errmsg = "Siena1 GPIO initialization failed.";
+            CRITLOG << m_errmsg;
+            return false;
+        }
+        m_rxDev = new ReceiverTDA19977(*m_fx2, m_params.rxClockDelay, m_params.rxClockToggle,
+                         m_params.rxOutputDelay, m_params.rxClockDelayAuto);
         if (!m_rxDev->init())
         {
             m_errmsg = "Siena1 receiver initialization before encoder boot failed.";

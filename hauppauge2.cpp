@@ -335,6 +335,10 @@ int main(int argc, char *argv[])
          po::value<bool>(&params.rxClockToggle)->default_value(true),
          "Siena1 receiver pixel-clock toggle")
 
+        ("rx-output-delay",
+         po::value<unsigned>(&params.rxOutputDelay)->default_value(8),
+         "Siena1 output-clock delay setting (0-15)")
+
         ("codec,d",
          po::value<int>()->default_value(3),
          "Audio codec "
@@ -617,6 +621,7 @@ int main(int argc, char *argv[])
 
 
     notify(vm);
+    params.rxClockDelayAuto = vm["rx-clock-delay"].defaulted();
 
 
 #if 0
