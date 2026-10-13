@@ -33,6 +33,8 @@ struct Parameters
 
     int    verbose;
     bool   audioBoost;
+    unsigned rxClockDelay;
+    bool rxClockToggle;
 
     int    tsBitrate;
     int    videoBitrate;

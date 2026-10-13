@@ -126,6 +126,8 @@ int main()
     assert(transmitterRegisters[0x1084] == 1);
     assert(transmitterRegisters[0x1100] == 0);
     assert(receiver.setOutputBusMode(RXOBM_422_10x2));
+    assert(registers[0x0017] == 0xaf);
+    assert(registers[0x00e5] == 0x79);
     assert(!receiver.setOutputBusMode(RXOBM_656_10_DC));
     timing(540000, 480);
     assert(receiver.hasInputSignal() && receiver.getHDMIFormat() == 31);
@@ -140,6 +142,18 @@ int main()
     registers[0] = 0x42;
     ReceiverTDA19977 wrongChip(device);
     assert(!wrongChip.init());
+    reset();
+    ReceiverTDA19977 invalidDelay(device, 8);
+    assert(!invalidDelay.init() && pageWrites == 0);
+    ReceiverTDA19977 adjustedDelay(device, 2);
+    assert(adjustedDelay.init());
+    assert(registers[0x0016] == 2 && (registers[0x0017] & 0x80));
+    ReceiverTDA19977 zeroDelay(device, 0);
+    assert(zeroDelay.init());
+    assert(registers[0x0016] == 0 && (registers[0x0017] & 0x80));
+    ReceiverTDA19977 alternateClock(device, 1, false);
+    assert(alternateClock.init());
+    assert(registers[0x0016] == 1 && registers[0x00e9] == 0x20);
     reset();
     failWrite = true;
     ReceiverTDA19977 failedTransport(device);

@@ -6,8 +6,9 @@
 
 using namespace TDA19977Data;
 
-ReceiverTDA19977::ReceiverTDA19977(FX2Device_t &device)
-    : m_device(device), m_page(-1), m_transmitterPage(-1), m_initialized(false), m_format(nullptr)
+ReceiverTDA19977::ReceiverTDA19977(FX2Device_t &device, unsigned clockDelay, bool clockToggle)
+    : m_device(device), m_page(-1), m_transmitterPage(-1), m_clockDelay(clockDelay), m_clockToggle(clockToggle),
+            m_initialized(false), m_format(nullptr)
 {
 }
 
@@ -41,6 +42,8 @@ bool ReceiverTDA19977::write(uint16_t reg, uint8_t value)
 
 bool ReceiverTDA19977::init()
 {
+    if (m_clockDelay > 7)
+        return false;
     uint8_t revision = 0;
     if (!read(0x0000, revision))
         return false;
@@ -161,8 +164,14 @@ bool ReceiverTDA19977::configureOutput(const Format &format)
         return false;
     if (!configureTransmitter(format))
         return false;
+    if (!update(0x0017, 0x80, 0x80) ||
+        !write(0x0016, static_cast<uint8_t>(m_clockDelay)) ||
+        !update(0x00e9, 0x80, m_clockToggle ? 0x80 : 0))
+        return false;
     INFOLOG << "TDA19977 HDMI: " << format.width << "x" << format.height
             << (format.interlaced ? "i" : "p") << " " << format.rate / 100.0;
+    INFOLOG << "TDA19977 pixel-clock delay: " << m_clockDelay;
+    INFOLOG << "TDA19977 pixel-clock toggle: " << m_clockToggle;
     return true;
 }
 

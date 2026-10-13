@@ -9,7 +9,7 @@ namespace TDA19977Data { struct Format; struct Register; struct TransmitterOpera
 class ReceiverTDA19977 : public receiver_t
 {
   public:
-    explicit ReceiverTDA19977(FX2Device_t &device);
+    explicit ReceiverTDA19977(FX2Device_t &device, unsigned clockDelay = 7, bool clockToggle = true);
     bool init() override;
     bool setInput(receiverInput_t input) override;
     bool setOutputBusMode(receiverOutputBusMode_t mode) override;
@@ -35,6 +35,8 @@ class ReceiverTDA19977 : public receiver_t
     FX2Device_t &m_device;
     int m_page;
     int m_transmitterPage;
+    unsigned m_clockDelay;
+    bool m_clockToggle;
     bool m_initialized;
     const TDA19977Data::Format *m_format;
 };

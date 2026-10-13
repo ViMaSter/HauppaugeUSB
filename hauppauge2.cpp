@@ -327,6 +327,14 @@ int main(int argc, char *argv[])
          "Audio input "
          "(0=RCA, 1=SPDIF, 2=SDI, 3=HDMI)")
 
+        ("rx-clock-delay",
+         po::value<unsigned>(&params.rxClockDelay)->default_value(7),
+         "Siena1 receiver pixel-clock sampling delay (0-7)")
+
+        ("rx-clock-toggle",
+         po::value<bool>(&params.rxClockToggle)->default_value(true),
+         "Siena1 receiver pixel-clock toggle")
+
         ("codec,d",
          po::value<int>()->default_value(3),
          "Audio codec "

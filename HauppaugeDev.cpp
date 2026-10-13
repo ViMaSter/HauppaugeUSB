@@ -1861,6 +1861,12 @@ bool HauppaugeDev::Open(
         return false;
     }
     const bool legacy = profile->receiver == ReceiverFamily::TDA19977;
+    if (legacy && m_params.rxClockDelay > 7)
+    {
+        m_errmsg = "Receiver clock delay must be between 0 and 7.";
+        CRITLOG << m_errmsg;
+        return false;
+    }
     if ((!profile->opticalAudio && m_params.audioInput == HAPI_AUDIO_CAPTURE_SOURCE_SPDIF) ||
         (legacy && (m_params.videoInput != HAPI_VIDEO_CAPTURE_SOURCE_HDMI ||
                     m_params.audioInput != HAPI_AUDIO_CAPTURE_SOURCE_HDMI ||
@@ -1929,6 +1935,16 @@ bool HauppaugeDev::Open(
         0x10
     );
 
+    if (legacy)
+    {
+        m_rxDev = new ReceiverTDA19977(*m_fx2, m_params.rxClockDelay, m_params.rxClockToggle);
+        if (!m_rxDev->init())
+        {
+            m_errmsg = "Siena1 receiver initialization before encoder boot failed.";
+            CRITLOG << m_errmsg;
+            return false;
+        }
+    }
 
     // -----------------------------------------------------------------
     // Encoder
@@ -2013,9 +2029,8 @@ bool HauppaugeDev::Open(
     // Receiver
     // -----------------------------------------------------------------
 
-    m_rxDev = legacy
-        ? static_cast<receiver_t *>(new ReceiverTDA19977(*m_fx2))
-        : static_cast<receiver_t *>(new receiver_ADV7842_t(*m_fx2));
+    if (!legacy)
+        m_rxDev = new receiver_ADV7842_t(*m_fx2);
 
 
     /*
@@ -2104,7 +2119,7 @@ bool HauppaugeDev::Open(
     }
 
 
-    if (!m_rxDev->init())
+    if (!legacy && !m_rxDev->init())
     {
         m_errmsg = "Receiver initialization failed.";
         CRITLOG << m_errmsg;
