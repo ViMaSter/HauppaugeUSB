@@ -236,6 +236,15 @@ void HauppaugeDev::configure(void)
         m_params.videoH264Level
     );
 
+    RegistryAccess::writeDword(
+        "VideoLatency",
+        m_params.videoLatency
+    );
+
+    RegistryAccess::writeDword(
+        "NumBFrames",
+        m_params.bFrames
+    );
 
     RegistryAccess::writeDword(
         "AudioCapSource",
