@@ -57,76 +57,10 @@ USBWrapper_t::~USBWrapper_t(void)
 bool USBWrapper_t::DevName(string& name, struct libusb_device_descriptor& desc)
 
 {
-    if (desc.idVendor != 0x2040)
-        return false;
-
-    if (desc.idProduct == 0xe504)
-    {
-        // 157220
-        name = "HD PVR 2 Gaming Edition Plus w/SPDIF (Siena2-02)";
-        return true;
-    }
-    if (desc.idProduct == 0xe505)
-    {
-        // 157320
-        name = "HD PVR 2 Gaming Edition Plus w/SPDIF w/MIC (Siena2-05a)";
-        return true;
-    }
-    if (desc.idProduct == 0xe524)
-    {
-        // 157210
-        name = "HD PVR 2 Gaming Edition (Siena2-02)";
-        return true;
-    }
-    if (desc.idProduct == 0xe514)
-    {
-        // 157221
-        name = "HD PVR 2 model 1512 w/SPDIF, Alt bling (Siena2-02)";
-        return true;
-    }
-    if (desc.idProduct == 0xe515)
-    {
-        // 157321
-        name = "HD PVR 2 model 1512 w/SPDIF w/MIC Alt blink (Siena2-05a)";
-        return true;
-    }
-    if (desc.idProduct == 0xe524)
-    {
-        // Siena2-02
-        name = "HD PVR 2 (unknown version) (Siena2-02)";
-        return true;
-    }
-    if (desc.idProduct == 0xe525)
-    {
-        // 157310
-        name = "HD PVR 2 Gaming Edition w/MIC (Siena2-05a)";
-        return true;
-    }
-    if (desc.idProduct == 0xe52c)
-    {
-        // Siena2 StreamEez
-        name = "HD PVR 2 StreamEez (Siena2)";
-        return true;
-    }
-    if (desc.idProduct == 0xe554)
-    {
-        // 157222
-        name = "HD PVR 2 Gaming Edition Plus w/SPDIF, Blue LEDs (Siena2-02)";
-        return true;
-    }
-    if (desc.idProduct == 0xe585)
-    {
-        name = "Colossus 2";
-        return true;
-    }
-
-    if (desc.idProduct >= 0xe500 && desc.idProduct < 0xeffff)
-    {
-        name = "Guessing it is a HD-PVR, but version unknown";
-        return true;
-    }
-
-    return false;
+    const DeviceProfile *profile = FindDeviceProfile(desc.idVendor, desc.idProduct);
+    if (!profile) return false;
+    name = profile->name;
+    return true;
 }
 
 void USBWrapper_t::USBDevDesc(string& descstr)
@@ -278,8 +212,14 @@ bool USBWrapper_t::ResetBus(uint8_t bus)
 
 bool USBWrapper_t::Open(const string& serial, callback_t * error_cb)
 {
-    int idx = 0;
     int ret = 0;
+    Close();
+    if (m_dev_list)
+    {
+        libusb_free_device_list(m_dev_list, 1);
+        m_dev_list = nullptr;
+    }
+    m_device = nullptr;
 
     if (error_cb)
         this->setErrorCB(*error_cb);
@@ -302,7 +242,8 @@ bool USBWrapper_t::Open(const string& serial, callback_t * error_cb)
     string name;
     char   strDesc[257];
     int    serial_sz = serial.size();
-    libusb_device_handle *handle;
+    libusb_device_handle *handle = nullptr;
+    bool matched = false;
 
     for (int idx = 0; idx < m_dev_cnt; ++idx)
     {
@@ -322,8 +263,14 @@ bool USBWrapper_t::Open(const string& serial, callback_t * error_cb)
             continue;
         }
 
-        libusb_get_string_descriptor_ascii(handle, desc.iSerialNumber,
+        ret = libusb_get_string_descriptor_ascii(handle, desc.iSerialNumber,
                            reinterpret_cast<unsigned char *>(strDesc), 256);
+        if (ret < 0)
+        {
+            libusb_close(handle);
+            continue;
+        }
+        strDesc[ret] = '\0';
 
         if (serial.compare(0, serial_sz, strDesc, serial_sz) != 0)
         {
@@ -336,10 +283,12 @@ bool USBWrapper_t::Open(const string& serial, callback_t * error_cb)
         m_device = m_dev_list[idx];
         m_desc = desc;
         m_name = name;
+        m_serial = strDesc;
+        matched = true;
         break;
     }
 
-    if (idx == m_dev_cnt)
+    if (!matched)
     {
         m_errmsg << "Unable to find serial " << serial << " in USB dev list.\n";
         return false;
@@ -348,18 +297,6 @@ bool USBWrapper_t::Open(const string& serial, callback_t * error_cb)
     m_msg << "Matched " << hex << m_desc.idVendor
           << ":0x" << m_desc.idProduct << " " << strDesc << endl;
 
-    if ((ret = libusb_reset_device(m_handle)) != 0)
-    {
-        if (ret == LIBUSB_ERROR_NOT_FOUND)
-        {
-            m_errmsg << "Device needs re-opened!\n";
-        }
-        else
-        {
-            m_errmsg << "Reset failed.\n";
-        }
-    }
-
     //find out if kernel driver is attached
     if (libusb_kernel_driver_active(m_handle, 0) == 1)
     {
@@ -367,15 +304,31 @@ bool USBWrapper_t::Open(const string& serial, callback_t * error_cb)
         if (libusb_detach_kernel_driver(m_handle, 0) < 0)
         {
             m_errmsg << "Failed to detach driver from kernel.\n";
+            Close();
+            return false;
         }
     }
 
     if (libusb_claim_interface(m_handle, 0) < 0)
     {
         m_errmsg << "Failed to claim interface.\n";
+        Close();
+        return false;
     }
 
     return true;
+}
+
+bool USBWrapper_t::Reopen(void)
+{
+    const string serial = m_serial;
+    if (serial.empty()) return false;
+    for (unsigned attempt = 0; attempt < 30; ++attempt)
+    {
+        if (Open(serial)) return true;
+        wrapSleep_ms(100);
+    }
+    return false;
 }
 
 void USBWrapper_t::Close(void)

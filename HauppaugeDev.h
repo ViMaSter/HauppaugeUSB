@@ -24,6 +24,7 @@
 #include "USBif.h"
 #include "FX2Device.h"
 #include "receiver_ADV7842.h"
+#include "ReceiverTDA19977.h"
 #include "Common.h"
 
 #include <string>
@@ -69,7 +70,7 @@ class HauppaugeDev
   private:
     int                 m_fd;
 
-    receiver_ADV7842_t *m_rxDev;
+    receiver_t        *m_rxDev;
     encoderDev_DXT_t   *m_encDev;
     FX2Device_t        *m_fx2;
     const Parameters   &m_params;

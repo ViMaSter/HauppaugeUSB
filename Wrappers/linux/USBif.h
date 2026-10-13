@@ -7,6 +7,7 @@
 #include <vector>
 #include <tuple>
 #include <functional>
+#include "../../DeviceProfile.h"
 
 //#include "common.h"
 #include "log.h"
@@ -114,10 +115,13 @@ class USBWrapper_t
     ~USBWrapper_t(void);
 
     bool Open(const std::string& serial, callback_t * error_cb = nullptr);
+    bool Reopen(void);
     void Close(void);
 
     bool DeviceList(DeviceIDVec& devs);
     void USBDevDesc(std::string& desc);
+    uint16_t ProductID(void) const { return m_desc.idProduct; }
+    uint16_t DeviceRevision(void) const { return m_desc.bcdDevice; }
 
     std::string MsgString(void);
     std::string ErrorString(void);
@@ -149,6 +153,7 @@ class USBWrapper_t
     libusb_device        *m_device;
     struct libusb_device_descriptor m_desc;
     std::string           m_name;
+    std::string           m_serial;
     libusb_device_handle *m_handle;
 
     std::ostringstream    m_errmsg;

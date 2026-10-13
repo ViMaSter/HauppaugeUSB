@@ -183,6 +183,23 @@ ordering and AC3 audio support.
 
 ## Installing
 
+### Gaming Edition Hardware
+
+Gaming Edition models are not all the same hardware. The legacy `2040:e502`
+uses a TDA19977 HDMI receiver; later Gaming/Gaming Plus variants `e524`, `e525`,
+`e504`, `e554`, and `e505` use ADV7842. The profile table now distinguishes these
+boards instead of treating unknown Hauppauge products as an arbitrary HD PVR.
+
+**Legacy E502 support is experimental and incomplete.** It identifies the real
+receiver and produces 1080p H.264/stereo AAC packets, but the tested picture is
+corrupted. Do not use this as a production capture driver yet. Legacy analog
+inputs, AC3 detection, and complete HDMI passthrough are not implemented.
+The existing Siena2 path is retained; other variants have not been tested in
+this investigation.
+
+See [the investigation and evidence ledger](analysis/README.md) for package
+digests, native addresses, REA Evidence IDs, tests, and remaining limitations.
+
 ### Install dependencies
 
 #### Fedora

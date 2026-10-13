@@ -43,10 +43,10 @@ REC_LDFLAGS += `pkg-config --libs libusb-1.0` \
 	-lpthread
 
 REC_SOURCES = Logger.cpp Common.cpp MythTV.cpp TSRandomAccessFixer.cpp \
-	FlipInterlacedFields.cpp HauppaugeDev.cpp hauppauge2.cpp
+	FlipInterlacedFields.cpp HauppaugeDev.cpp ReceiverTDA19977.cpp hauppauge2.cpp
 
 REC_HEADERS = Logger.h Common.h MythTV.h TSRandomAccessFixer.h \
-	FlipInterlacedFields.h HauppaugeDev.h
+	FlipInterlacedFields.h HauppaugeDev.h ReceiverTDA19977.h ReceiverTDA19977Data.h
 
 REC_OBJECTS = $(REC_SOURCES:.cpp=.o)
 
@@ -77,6 +77,10 @@ ${REC_EXE}: ${REC_OBJECTS} libADV7842.a
 
 ${REC_OBJECTS}: ${REC_SOURCES}
 
+HauppaugeDev.o: HauppaugeDev.h DeviceProfile.h ReceiverTDA19977.h
+ReceiverTDA19977.o: ReceiverTDA19977.h ReceiverTDA19977Data.h
+USBif.o: Wrappers/linux/USBif.h DeviceProfile.h
+
 
 .cpp.o:
 	${REC_CXX} ${REC_CXXFLAGS} $< -o $@
@@ -100,7 +104,7 @@ ${REC_OBJECTS}: ${REC_SOURCES}
 # Only remove generated build products here.
 #
 clean:
-	$(RM) *.o *.a ${REC_EXE} ${TRANSIENT}
+	$(RM) *.o *.a ${REC_EXE} ${TRANSIENT} tests/receiver-test
 
 
 install: ${REC_EXE}
@@ -111,3 +115,11 @@ install: ${REC_EXE}
 	install -D --target-directory $(PREFIX)/etc ${CONF}
 
 .PHONY: all clean install
+
+check: tests/receiver-test
+	./tests/receiver-test
+
+tests/receiver-test: tests/ReceiverTDA19977Test.cpp ReceiverTDA19977.cpp ReceiverTDA19977.h ReceiverTDA19977Data.h DeviceProfile.h Logger.cpp
+	$(REC_CXX) -std=c++11 -Wall -DBOOST_LOG_DYN_LINK -I. $(INC) tests/ReceiverTDA19977Test.cpp ReceiverTDA19977.cpp Logger.cpp -o $@ $(filter -l%,$(REC_LIBS)) $(REC_LDFLAGS)
+
+.PHONY: check

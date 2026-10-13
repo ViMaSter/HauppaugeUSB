@@ -15,3 +15,8 @@ hauppauge2.*.log
 *.bin
 *.ts
 *.cfg
+
+# Local native-analysis responses and verification captures
+analysis/rea/
+analysis/verification/
+tests/receiver-test

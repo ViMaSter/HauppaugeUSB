@@ -1486,9 +1486,14 @@ bool HauppaugeDev::init_hdmi(void)
         HAPI_VIDEO_CAPTURE_SOURCE_HDMI
     )
     {
-        m_rxDev->setInput(
+        if (!m_rxDev->setInput(
             RXI_HDMI
-        );
+        ))
+        {
+            m_errmsg = "HDMI receiver input selection failed.";
+            CRITLOG << m_errmsg;
+            return false;
+        }
 
 
         std::this_thread::
@@ -1646,9 +1651,14 @@ bool HauppaugeDev::init_hdmi(void)
          * There should not be any such modes in DMT...
          * Or maybe bad InfoFrame?
          */
-        m_rxDev->setOutputBusMode(
+        if (!m_rxDev->setOutputBusMode(
             RXOBM_422_10x2
-        );
+        ))
+        {
+            m_errmsg = "Receiver output bus mode is not implemented.";
+            CRITLOG << m_errmsg;
+            return false;
+        }
     }
     else
     {
@@ -1663,18 +1673,28 @@ bool HauppaugeDev::init_hdmi(void)
             case 21:
             case 22:
 
-                m_rxDev->setOutputBusMode(
+                if (!m_rxDev->setOutputBusMode(
                     RXOBM_656_10_DC
-                );
+                ))
+                {
+                    m_errmsg = "Receiver output bus mode is not implemented.";
+                    CRITLOG << m_errmsg;
+                    return false;
+                }
 
                 break;
 
 
             default:
 
-                m_rxDev->setOutputBusMode(
+                if (!m_rxDev->setOutputBusMode(
                     RXOBM_422_10x2
-                );
+                ))
+                {
+                    m_errmsg = "Receiver output bus mode is not implemented.";
+                    CRITLOG << m_errmsg;
+                    return false;
+                }
         }
     }
 
@@ -1833,7 +1853,24 @@ bool HauppaugeDev::Open(
     INFOLOG
         << "Opening Hauppauge USB device.";
 
-
+    const DeviceProfile *profile = FindDeviceProfile(0x2040, usbio.ProductID());
+    if (!profile || profile->receiver == ReceiverFamily::Unimplemented)
+    {
+        m_errmsg = "This board's receiver has not been implemented.";
+        CRITLOG << m_errmsg;
+        return false;
+    }
+    const bool legacy = profile->receiver == ReceiverFamily::TDA19977;
+    if ((!profile->opticalAudio && m_params.audioInput == HAPI_AUDIO_CAPTURE_SOURCE_SPDIF) ||
+        (legacy && (m_params.videoInput != HAPI_VIDEO_CAPTURE_SOURCE_HDMI ||
+                    m_params.audioInput != HAPI_AUDIO_CAPTURE_SOURCE_HDMI ||
+                    (m_params.audioCodec != HAPI_AUDIO_CODEC_AAC &&
+                     m_params.audioCodec != HAPI_AUDIO_CODEC_AUTO))))
+    {
+        m_errmsg = "This board/input combination is not supported; Siena1 currently requires HDMI video/audio and AAC.";
+        CRITLOG << m_errmsg;
+        return false;
+    }
     if (m_params.verbose)
     {
         string desc;
@@ -1859,52 +1896,23 @@ bool HauppaugeDev::Open(
         );
 
 
-    int idx = 0;
-
-
-    for (
-        ;
-        !m_fx2->isUSBHighSpeed()
-            &&
-        idx < MAX_RETRY;
-        ++idx
-    )
+    if (!m_fx2->isUSBHighSpeed())
     {
-        m_fx2->stopCPU();
-
-
-        std::this_thread::
-            sleep_for(
-                std::chrono::
-                milliseconds(1)
-            );
-
-
-        m_fx2->loadFirmware();
-
-
-        std::this_thread::
-            sleep_for(
-                std::chrono::
-                milliseconds(1)
-            );
-
-
-        m_fx2->startCPU();
-
-
-        std::this_thread::
-            sleep_for(
-                std::chrono::
-                milliseconds(100)
-            );
+        if (!m_fx2->stopCPU() || !m_fx2->loadFirmware() || !m_fx2->startCPU())
+        {
+            m_errmsg = "FX2 firmware download failed.";
+            CRITLOG << m_errmsg;
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        if (!usbio.Reopen() || !m_fx2->isUSBHighSpeed())
+        {
+            m_errmsg = "FX2 did not become ready after firmware restart.";
+            CRITLOG << m_errmsg;
+            return false;
+        }
     }
-
-
-    INFOLOG
-        << "FX2 ready after "
-        << idx
-        << " tries.";
+    INFOLOG << "FX2 ready.";
 
 
     log_ports();
@@ -1944,7 +1952,6 @@ bool HauppaugeDev::Open(
 
         return false;
     }
-
 
     // -----------------------------------------------------------------
     // MDP one-shot snapshot support
@@ -2006,10 +2013,9 @@ bool HauppaugeDev::Open(
     // Receiver
     // -----------------------------------------------------------------
 
-    m_rxDev =
-        new receiver_ADV7842_t(
-            *m_fx2
-        );
+    m_rxDev = legacy
+        ? static_cast<receiver_t *>(new ReceiverTDA19977(*m_fx2))
+        : static_cast<receiver_t *>(new receiver_ADV7842_t(*m_fx2));
 
 
     /*
@@ -2026,7 +2032,11 @@ bool HauppaugeDev::Open(
         );
 
 
-    if (ac3Capable)
+    if (legacy)
+    {
+        INFOLOG << "Using Siena1 vendor EDID and TDA19977 receiver.";
+    }
+    else if (ac3Capable)
     {
 #if 1
         m_rxDev->setEDID(
@@ -2094,7 +2104,12 @@ bool HauppaugeDev::Open(
     }
 
 
-    m_rxDev->init();
+    if (!m_rxDev->init())
+    {
+        m_errmsg = "Receiver initialization failed.";
+        CRITLOG << m_errmsg;
+        return false;
+    }
 
 
     INFOLOG
@@ -2186,6 +2201,10 @@ void HauppaugeDev::Close(void)
 
 bool HauppaugeDev::StartEncoding(void)
 {
+    const DeviceProfile *profile = FindDeviceProfile(0x2040, m_fx2->usb.ProductID());
+    const bool legacy = profile && profile->receiver == ReceiverFamily::TDA19977;
+    if (legacy && !m_fx2->setPortStateBits(FX2_PORT_E, 0x01, 0))
+        return false;
     switch (
         m_params.videoInput
     )
@@ -2225,6 +2244,13 @@ bool HauppaugeDev::StartEncoding(void)
     }
 
 
+    if (legacy)
+    {
+        INFOLOG << "Siena1 receiver state before capture";
+        m_rxDev->showInfo();
+        if (!m_fx2->setPortState(FX2_PORT_E, 0))
+            return false;
+    }
     if (!m_encDev->startCapture())
     {
         m_errmsg =
@@ -2266,6 +2292,15 @@ bool HauppaugeDev::StopEncoding(void)
     }
 
 
+    const DeviceProfile *profile = FindDeviceProfile(0x2040, m_fx2->usb.ProductID());
+    if (profile && profile->receiver == ReceiverFamily::TDA19977 &&
+        !m_fx2->setPortStateBits(FX2_PORT_E, 0x01, 0))
+        return false;
+    if (profile && profile->receiver == ReceiverFamily::TDA19977)
+    {
+        INFOLOG << "Siena1 receiver state after capture";
+        m_rxDev->showInfo();
+    }
     log_ports();
 
 
