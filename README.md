@@ -365,6 +365,18 @@ selected. The program does not currently protect you from choosing bad
 combinations, because in many cases they *should* work, but have not been
 implemented yet.
 
+### Live viewing in VLC
+
+This userspace recorder does not create a V4L2 capture device. Feed its MPEG-TS
+output to VLC instead. On the tested Bazzite host, VLC is installed as Flatpak:
+
+```sh
+./hauppauge2 --serial E502-00-00A9560D --input 3 --audio 3 --codec 3 \
+  --output stdout --quiet --logpath /tmp | \
+flatpak run org.videolan.VLC --no-one-instance --avcodec-hw=none \
+  --vout=xcb_x11 --demux=ts --file-caching=1000 -
+```
+
 ----
 
 ### Command line examples
