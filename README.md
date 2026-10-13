@@ -190,12 +190,29 @@ uses a TDA19977 HDMI receiver; later Gaming/Gaming Plus variants `e524`, `e525`,
 `e504`, `e554`, and `e505` use ADV7842. The profile table now distinguishes these
 boards instead of treating unknown Hauppauge products as an arbitrary HD PVR.
 
-**Legacy E502 support is experimental and incomplete.** It identifies the real
-receiver and produces 1080p H.264/stereo AAC packets, but the tested picture is
-corrupted. Do not use this as a production capture driver yet. Legacy analog
-inputs, AC3 detection, and complete HDMI passthrough are not implemented.
+**Legacy E502 HDMI 1080p30 output and 720p60 capture have been hardware-validated.**
+Receiver and transmitter timing/audio setup now follow the supplied Mac driver.
+The fresh 1920x1080 image from 1080p60 input was confirmed clean by the user;
+video and 48000 Hz stereo AAC decoded successfully. Legacy analog inputs and AC3 detection are not
+implemented; passthrough timing is programmed but not separately verified.
 The existing Siena2 path is retained; other variants have not been tested in
 this investigation.
+
+Set the source to 1080p60 or 720p60 SDR with stereo HDMI audio, with HDR, VRR
+and ALLM off:
+
+```sh
+./hauppauge2 --serial E502-00-00A9560D --input 3 --audio 3 --codec 3 --output capture.ts
+```
+
+Legacy sampling controls are `rx-clock-delay` (0-7), `rx-clock-toggle`
+(true/false, default true), and `rx-output-delay` (0-15, default 8). Without an
+explicit `rx-clock-delay`, E502 uses delay 1 for 1080p60 and delay 7 for other
+modes; an explicit value overrides automatic selection. These use the Windows
+driver's independent clock register settings. The HDMI path also disables the
+legacy analog receiver's still-active output and acknowledges receiver events
+as observed in the Mac driver.
+These options do not change the later ADV7842 boards.
 
 See [the investigation and evidence ledger](analysis/README.md) for package
 digests, native addresses, REA Evidence IDs, tests, and remaining limitations.
