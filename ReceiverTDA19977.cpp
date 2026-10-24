@@ -73,11 +73,21 @@ bool ReceiverTDA19977::init()
     for (unsigned index = 0; index < sizeof(EDID); ++index)
         if (!write(0x2000 + (index < 128 ? index : 0x100 + index - 128), EDID[index]))
             return false;
+    constexpr unsigned extension = 128;
+    constexpr unsigned physicalAddressOffset = 8;
+    unsigned extensionSum = 0;
+    for (unsigned index = 0; index < 127; ++index)
+        if (index != physicalAddressOffset)
+            extensionSum += EDID[extension + index];
+    // The receiver substitutes each port's physical address and checksum in EDID block 1.
+    const auto portChecksum = [extensionSum](uint8_t address) {
+        return static_cast<uint8_t>(-(extensionSum + address));
+    };
     const Register auxiliary[] = {
-        {0x2180, 8}, {0x2181, 0x10}, {0x2182, 0}, {0x2183, 0x20},
+        {0x2180, physicalAddressOffset}, {0x2181, 0x10}, {0x2182, 0}, {0x2183, 0x20},
         {0x2184, 0}, {0x2185, 0x30}, {0x2186, 0}, {0x2187, 0x40},
-        {0x2188, 0}, {0x2189, 0x7c}, {0x218a, 0x6c}, {0x218b, 0x5c},
-        {0x218c, 0x4c}, {0x11f9, 8},
+        {0x2188, 0}, {0x2189, portChecksum(0x10)}, {0x218a, portChecksum(0x20)},
+        {0x218b, portChecksum(0x30)}, {0x218c, portChecksum(0x40)}, {0x11f9, 8},
     };
     if (!sequence(auxiliary, sizeof(auxiliary) / sizeof(auxiliary[0])) ||
         !sequence(TMDS, sizeof(TMDS) / sizeof(TMDS[0])))
@@ -184,7 +194,9 @@ bool ReceiverTDA19977::configureOutput(const Format &format)
         return false;
     if (!configureTransmitter(format))
         return false;
-    const unsigned clockDelay = m_automaticClockDelay && format.id == 12 ? 1 : m_clockDelay;
+    const bool fullHdProgressive = format.id == 12 || format.id == 17;
+    // Delay 4 centers the 1080p window that is clean for both capture and HDMI passthrough.
+    const unsigned clockDelay = m_automaticClockDelay && fullHdProgressive ? 4 : m_clockDelay;
     if (!update(0x0017, 0x80, 0x80) ||
         !write(0x0016, static_cast<uint8_t>(clockDelay)) ||
         !update(0x00e9, 0x80, m_clockToggle ? 0x80 : 0) ||

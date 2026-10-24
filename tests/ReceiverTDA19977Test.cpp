@@ -127,6 +127,8 @@ int main()
     for (unsigned index = 0; index < 256; ++index)
         assert(registers[0x2000 + (index < 128 ? index : 0x100 + index - 128)] ==
                TDA19977Data::EDID[index]);
+    assert(TDA19977Data::EDID[136] == 0x10 && registers[0x2189] == TDA19977Data::EDID[255]);
+    assert(static_cast<uint8_t>(registers[0x218a] + 0x10) == registers[0x2189]);
     assert(!receiver.setInput(RXI_COMP));
     assert(receiver.setInput(RXI_HDMI));
     assert(analogRegisters[0xe5] == 0x80 && analogRegisters[0xf4] == 0x1f);
@@ -182,7 +184,14 @@ int main()
     assert(registers[0x0016] == 7);
     timing(450450, 400);
     assert(automaticDelay.hasInputSignal());
-    assert(registers[0x0016] == 1);
+    assert(registers[0x0016] == 4);
+    registers[0x0016] = 7;
+    timing(540000, 480);
+    assert(automaticDelay.hasInputSignal() && automaticDelay.getHDMIFormat() == 31);
+    assert(registers[0x0016] == 4);
+    timing(450450, 800);
+    assert(automaticDelay.hasInputSignal() && automaticDelay.getHDMIFormat() == 5);
+    assert(registers[0x0016] == 7 && registers[0x00c0] == 0x82);
     reset();
     failWrite = true;
     ReceiverTDA19977 failedTransport(device);
