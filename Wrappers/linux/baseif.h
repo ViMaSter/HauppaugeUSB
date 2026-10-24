@@ -10,6 +10,10 @@
 #include <sys/time.h>
 #include <stdlib.h>
 #include <pthread.h>
+#ifdef __APPLE__
+#include <errno.h>
+#include <time.h>
+#endif
 
 #include "log.h"
 
@@ -75,10 +79,32 @@ inline int wrapMutexDestroy(wrapMutex_t *m) {
 }
 
 inline int wrapMutexLock(wrapMutex_t *m) {
+#ifdef __APPLE__
+    struct timespec deadline;
+    if (clock_gettime(CLOCK_MONOTONIC, &deadline) != 0)
+        return WRAPOS_ERROR;
+    deadline.tv_sec += 10;
+
+    for (;;) {
+        int result = pthread_mutex_trylock(m);
+        if (result != EBUSY)
+            return (result == 0) ? WRAPOS_OK : WRAPOS_ERROR;
+
+        struct timespec now;
+        if (clock_gettime(CLOCK_MONOTONIC, &now) != 0 ||
+            now.tv_sec > deadline.tv_sec ||
+            (now.tv_sec == deadline.tv_sec && now.tv_nsec >= deadline.tv_nsec))
+            return WRAPOS_ERROR;
+
+        struct timespec pause = {0, 1000000};
+        nanosleep(&pause, NULL);
+    }
+#else
     struct timespec wait = {0,};
     wait.tv_sec = 10;
 
     return (pthread_mutex_timedlock(m, &wait) == 0) ? WRAPOS_OK : WRAPOS_ERROR;
+#endif
 }
 
 inline int wrapMutexUnlock(wrapMutex_t *m) {
@@ -120,7 +146,11 @@ public:
         ~wrapAtomicScope_t() {pthread_mutex_unlock(&_m);}
 };
 
+#ifdef __APPLE__
+#define WRAP_ATOMIC_SCOPE static pthread_mutex_t wrapAtomicScope_v = PTHREAD_RECURSIVE_MUTEX_INITIALIZER; wrapAtomicScope_t wrapAtomicScope(wrapAtomicScope_v);
+#else
 #define WRAP_ATOMIC_SCOPE static pthread_mutex_t wrapAtomicScope_v = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP; wrapAtomicScope_t wrapAtomicScope(wrapAtomicScope_v);
+#endif
 #define WRAP_ATOMIC_SCOPE_M(M) wrapAtomicScope_t wrapAtomicScope(M);
 
 #endif

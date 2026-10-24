@@ -131,11 +131,11 @@ bool ListDevs(void)
 
 
 bool FindDev(
+    USBWrapper_t &usbio,
     const string &serial,
     int &bus,
     int &port)
 {
-    USBWrapper_t usbio;
     DeviceIDVec devs;
     DeviceIDVec::iterator Idev;
 
@@ -728,6 +728,7 @@ int main(int argc, char *argv[])
 
     CRITLOG << "Starting up";
 
+    USBWrapper_t usbio;
 
     // -----------------------------------------------------------------
     // Device selection
@@ -740,6 +741,7 @@ int main(int argc, char *argv[])
 
 
         if (!FindDev(
+                usbio,
                 params.serial,
                 bus,
                 port))
@@ -1068,12 +1070,11 @@ int main(int argc, char *argv[])
             return -2;
 
 
-        USBWrapper_t usbio;
-
-
         if (!usbio.Open(
                 params.serial))
         {
+            CRITLOG << "Could not open USB device: "
+                    << usbio.ErrorString();
             return -3;
         }
 

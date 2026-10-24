@@ -207,9 +207,14 @@ and ALLM off:
 
 Legacy sampling controls are `rx-clock-delay` (0-7), `rx-clock-toggle`
 (true/false, default true), and `rx-output-delay` (0-15, default 8). Without an
-explicit `rx-clock-delay`, E502 uses delay 1 for 1080p60 and delay 7 for other
-modes; an explicit value overrides automatic selection. These use the Windows
-driver's independent clock register settings. The HDMI path also disables the
+explicit `rx-clock-delay`, E502 uses delay 4 for 1080p60/1080p50 (delays 0-2
+cause noise on the HDMI passthrough monitor) and delay 7 for other modes; an
+explicit value overrides automatic selection. These use the Windows driver's
+independent clock register settings. For 1080i, the receiver inverts the field
+ID so capture and passthrough keep the correct field order. The emulated EDID
+advertises 1080p50 (VIC 31). The recorder does not reconfigure when the source
+changes resolution mid-capture; restart it after changing the console's output
+mode. The HDMI path also disables the
 legacy analog receiver's still-active output and acknowledges receiver events
 as observed in the Mac driver.
 These options do not change the later ADV7842 boards.
@@ -238,6 +243,12 @@ If you intend to use one-shot snapshot support:
 
 ```
 sudo apt-get install ffmpeg
+```
+
+#### macOS (Homebrew)
+
+```
+brew install boost libusb pkgconf
 ```
 
 #### MythTV
@@ -284,7 +295,7 @@ for fl in 01-NewLine.patch \
           09-MDP-Snapshot.patch \
           10-HDMI-AudioFormat.patch
 do
-    patch -p1 < ~/src/Hauppauge/HauppaugeUSB/Patches/"${fl}"
+    patch -l -p1 < ~/src/Hauppauge/HauppaugeUSB/Patches/"${fl}"
 done
 ```
 
@@ -297,25 +308,40 @@ mv Common/Rx/ADV7842/Wrapper.c Common/Rx/ADV7842/Wrapper.cpp
 
 ### Build it
 
-The default installation directory is:
+On Linux, the default installation directory is:
 
 ```
 /opt/Hauppauge
 ```
 
-Build and install with:
+On macOS, the default prefix is `$HOME/.local`. The macOS build uses the
+libusb user-space wrapper; it does not install a kernel extension or create a
+V4L2 device. Build and install with:
 
 ```
 cd ~/src/Hauppauge/HauppaugeUSB
 make
+```
+
+Install on Linux with:
+
+```
 sudo make install
 ```
 
-The installation directory can be changed using `PREFIX`. For example, to
-install a test build alongside an existing installation:
+Install on macOS without administrator access with:
 
 ```
-sudo make install PREFIX=/opt/Hauppauge-new
+make install
+```
+
+The installation directory can be changed using `PREFIX`. Because the
+firmware location is compiled into the program, use the same `PREFIX` when
+building and installing. For example:
+
+```
+make PREFIX="$HOME/.local/hauppauge"
+make install PREFIX="$HOME/.local/hauppauge"
 ```
 
 The build can safely be cleaned and rebuilt with:
@@ -375,6 +401,15 @@ output to VLC instead. On the tested Bazzite host, VLC is installed as Flatpak:
   --output stdout --quiet --logpath /tmp | \
 flatpak run org.videolan.VLC --no-one-instance --avcodec-hw=none \
   --vout=xcb_x11 --demux=ts --file-caching=1000 -
+```
+
+On macOS, use the VLC application binary to play the recorder's MPEG-TS
+stdout:
+
+```sh
+$HOME/.local/bin/hauppauge2 --serial E502-00-00A9560D --input 3 --audio 3 \
+  --codec 3 --output stdout --quiet --logpath /tmp | \
+/Applications/VLC.app/Contents/MacOS/VLC --demux=ts -
 ```
 
 ----

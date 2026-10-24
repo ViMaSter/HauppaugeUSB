@@ -43,14 +43,16 @@ USBWrapper_t::USBWrapper_t(void)
 USBWrapper_t::~USBWrapper_t(void)
 {
     Close();
+    if (m_dev_list)
+    {
+        libusb_free_device_list(m_dev_list, 0);
+        m_dev_list = nullptr;
+    }
     if (m_ctx)
     {
         libusb_exit(m_ctx);
         m_ctx = NULL;
     }
-    if (m_dev_list)
-        //free the list, unref the devices in it
-        libusb_free_device_list(m_dev_list, 0);
 
 }
 
@@ -301,17 +303,23 @@ bool USBWrapper_t::Open(const string& serial, callback_t * error_cb)
     if (libusb_kernel_driver_active(m_handle, 0) == 1)
     {
         //detach it
-        if (libusb_detach_kernel_driver(m_handle, 0) < 0)
+        int detach_result = libusb_detach_kernel_driver(m_handle, 0);
+        if (detach_result < 0)
         {
-            m_errmsg << "Failed to detach driver from kernel.\n";
+            m_errmsg << "Failed to detach driver from kernel: "
+                     << libusb_error_name(detach_result) << " ("
+                     << detach_result << ").\n";
             Close();
             return false;
         }
     }
 
-    if (libusb_claim_interface(m_handle, 0) < 0)
+    int claim_result = libusb_claim_interface(m_handle, 0);
+    if (claim_result < 0)
     {
-        m_errmsg << "Failed to claim interface.\n";
+        m_errmsg << "Failed to claim USB interface 0: "
+                 << libusb_error_name(claim_result) << " ("
+                 << claim_result << ").\n";
         Close();
         return false;
     }

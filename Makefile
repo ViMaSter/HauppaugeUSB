@@ -1,6 +1,16 @@
 ## Override path set by Hauppauge's make files, to use our 'wrappers'
 
+HOST_OS := $(shell uname -s)
+ifeq ($(HOST_OS),Darwin)
+PREFIX ?= $(HOME)/.local
+BOOST_PREFIX ?= $(shell brew --prefix boost 2>/dev/null)
+BOOST_CPPFLAGS := -I$(BOOST_PREFIX)/include
+BOOST_LDFLAGS := -L$(BOOST_PREFIX)/lib
+override OS := linux
+override ARCH := -pthread
+else
 PREFIX ?= /opt/Hauppauge
+endif
 
 override TOP := ./Hauppauge
 
@@ -31,16 +41,21 @@ override OS_INC := `pkg-config --cflags libusb-1.0`
 
 include ./Hauppauge/TestApp/build-ADV7842/Makefile
 
+ifeq ($(HOST_OS),Darwin)
+CFLAGS += -D_DARWIN_C_SOURCE
+endif
+CFLAGS += -DHAUPPAUGE_FIRMWARE_DIR='"$(PREFIX)/firmware"'
+
 REC_CXX = g++
 REC_CXXFLAGS := -g -c -Wall -std=c++11 -fdiagnostics-color \
-	-DBOOST_LOG_DYN_LINK ${CFLAGS}
+	-DBOOST_LOG_DYN_LINK ${CFLAGS} $(BOOST_CPPFLAGS)
 
 REC_LDFLAGS =
 
 #	`pkg-config --libs libsystemd` \
 
 REC_LDFLAGS += `pkg-config --libs libusb-1.0` \
-	-lpthread
+	-lpthread $(BOOST_LDFLAGS)
 
 REC_SOURCES = Logger.cpp Common.cpp MythTV.cpp TSRandomAccessFixer.cpp \
 	FlipInterlacedFields.cpp HauppaugeDev.cpp ReceiverTDA19977.cpp hauppauge2.cpp
@@ -110,9 +125,10 @@ clean:
 install: ${REC_EXE}
 	ln -snf ${TOP}/Common/*.cfg .
 	ln -snf $(TOP)/Common/EncoderDev/HAPIHost/bin/*.bin .
-	install -D --target-directory $(PREFIX)/bin ${REC_EXE}
-	install -D --target-directory $(PREFIX)/firmware ${FIRMWARE}
-	install -D --target-directory $(PREFIX)/etc ${CONF}
+	mkdir -p $(PREFIX)/bin $(PREFIX)/firmware $(PREFIX)/etc
+	install -m 755 ${REC_EXE} $(PREFIX)/bin/
+	install -m 644 ${FIRMWARE} $(PREFIX)/firmware/
+	install -m 644 ${CONF} $(PREFIX)/etc/
 
 .PHONY: all clean install
 
@@ -120,6 +136,6 @@ check: tests/receiver-test
 	./tests/receiver-test
 
 tests/receiver-test: tests/ReceiverTDA19977Test.cpp ReceiverTDA19977.cpp ReceiverTDA19977.h ReceiverTDA19977Data.h DeviceProfile.h Logger.cpp
-	$(REC_CXX) -std=c++11 -Wall -DBOOST_LOG_DYN_LINK -I. $(INC) tests/ReceiverTDA19977Test.cpp ReceiverTDA19977.cpp Logger.cpp -o $@ $(filter -l%,$(REC_LIBS)) $(REC_LDFLAGS)
+	$(REC_CXX) -std=c++11 -Wall -DBOOST_LOG_DYN_LINK $(if $(filter Darwin,$(HOST_OS)),-D_DARWIN_C_SOURCE) -I. $(BOOST_CPPFLAGS) $(INC) tests/ReceiverTDA19977Test.cpp ReceiverTDA19977.cpp Logger.cpp -o $@ $(filter -l%,$(REC_LIBS)) $(REC_LDFLAGS)
 
 .PHONY: check
